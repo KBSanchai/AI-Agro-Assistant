@@ -64,25 +64,23 @@ export default function Index() {
     setPredicting(true);
     setCurrentStep(2);
     try {
-      const fileExt = imageFile.name.split(".").pop();
-      const filePath = `${session.user.id}/${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("crop-images")
-        .upload(filePath, imageFile);
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from("crop-images")
-        .getPublicUrl(filePath);
-      const imageUrl = urlData.publicUrl;
+      // Send raw file and model_type directly via FormData
+      const formData = new FormData();
+      formData.append("file", imageFile);
+      formData.append("model_type", modelType);
 
       const { data, error } = await supabase.functions.invoke("predict", {
-        body: { image_url: imageUrl, model_type: modelType },
+        body: formData,
       });
+      
       if (error) throw error;
 
-      setResult({ prediction: data.prediction, cure: data.cure, imageUrl, userEmail: data.user_email });
+      setResult({ 
+        prediction: data.prediction, 
+        cure: data.cure, 
+        imageUrl: data.image_url || preview, 
+        userEmail: data.user_email 
+      });
       setCurrentStep(3);
       setHistoryKey((k) => k + 1);
       toast.success("Analysis complete!");

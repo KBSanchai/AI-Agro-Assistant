@@ -4,6 +4,12 @@ const corsHeaders = {
 };
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// --- AWS LAB CREDENTIALS (PASTE NEW KEYS HERE) ---
+const LAB_ACCESS_KEY = ""; 
+const LAB_SECRET_KEY = "";
+const LAB_SESSION_TOKEN = "";
+// ------------------------------------------------
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -13,8 +19,7 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -27,41 +32,58 @@ Deno.serve(async (req) => {
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) {
       return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { image_url, model_type } = await req.json();
+    // Now accepting multipart/form-data
+    const formData = await req.formData();
+    const file = formData.get("file") as File;
+    const model_type = formData.get("model_type") as string;
 
-    if (!image_url || !model_type) {
-      return new Response(JSON.stringify({ error: "image_url and model_type required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (!file || !model_type) {
+      return new Response(JSON.stringify({ error: "file and model_type required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Also upload to S3 for backup (non-blocking, don't fail if S3 is down)
+    const fileBytes = new Uint8Array(await file.arrayBuffer());
+    const timestamp = Date.now();
+    const fileExt = file.name.split(".").pop() || "jpg";
+    const filePath = `${user.id}/${timestamp}.${fileExt}`;
+
+    // 1. Upload to Supabase Storage (using service_role for direct access)
+    const { data: storageData, error: storageError } = await supabase.storage
+      .from("crop-images")
+      .upload(filePath, fileBytes, { contentType: file.type, upsert: true });
+
+    if (storageError) {
+      console.error("Supabase storage sync error:", storageError);
+    }
+
+    const { data: { publicUrl: supabaseImageUrl } } = supabase.storage
+      .from("crop-images")
+      .getPublicUrl(filePath);
+
+    // 2. Upload to S3 for backup (using LAB keys if provided, else Secrets)
     let s3Url: string | null = null;
     try {
-      const accessKeyId = Deno.env.get("AWS_ACCESS_KEY_ID");
-      const secretAccessKey = Deno.env.get("AWS_SECRET_ACCESS_KEY");
-      const sessionToken = Deno.env.get("AWS_SESSION_TOKEN");
+      const accessKeyId = LAB_ACCESS_KEY || Deno.env.get("AWS_ACCESS_KEY_ID");
+      const secretAccessKey = LAB_SECRET_KEY || Deno.env.get("AWS_SECRET_ACCESS_KEY");
+      const sessionToken = LAB_SESSION_TOKEN || Deno.env.get("AWS_SESSION_TOKEN");
       const region = Deno.env.get("AWS_REGION") || "us-east-1";
       const bucket = Deno.env.get("AWS_S3_BUCKET") || "cropimagesave";
 
       if (accessKeyId && secretAccessKey) {
-        const imageResp = await fetch(image_url);
-        const imageBytes = new Uint8Array(await imageResp.arrayBuffer());
-        const key = `${user.id}/${Date.now()}_backup.jpg`;
-        const contentType = "image/jpeg";
+        const key = `${user.id}/${timestamp}_backup.${fileExt}`;
+        const contentType = file.type || "image/jpeg";
 
         const now = new Date();
         const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, "").substring(0, 15) + "Z";
         const dateStamp = amzDate.substring(0, 8);
         const host = `${bucket}.s3.${region}.amazonaws.com`;
 
-        const payloadHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", imageBytes)))
+        const payloadHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", fileBytes)))
           .map(b => b.toString(16).padStart(2, '0')).join('');
 
         const canonicalUri = "/" + key.split("/").map(encodeURIComponent).join("/");
@@ -94,93 +116,50 @@ Deno.serve(async (req) => {
         const s3PutUrl = `https://${host}${canonicalUri}`;
         
         const headers: Record<string, string> = { 
-          "Content-Type": contentType, 
-          "Host": host, 
-          "x-amz-content-sha256": payloadHash, 
-          "x-amz-date": amzDate, 
-          "Authorization": authorization 
+          "Content-Type": contentType, "Host": host, "x-amz-content-sha256": payloadHash, "x-amz-date": amzDate, "Authorization": authorization 
         };
-        if (sessionToken) {
-          headers["x-amz-security-token"] = sessionToken;
-        }
+        if (sessionToken) headers["x-amz-security-token"] = sessionToken;
 
-        const s3Resp = await fetch(s3PutUrl, {
-          method: "PUT",
-          headers,
-          body: imageBytes,
-        });
-
+        const s3Resp = await fetch(s3PutUrl, { method: "PUT", headers, body: fileBytes });
         if (s3Resp.ok) {
           s3Url = `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
           console.log("S3 backup uploaded:", s3Url);
         } else {
-          console.warn("S3 backup failed (non-critical):", s3Resp.status, await s3Resp.text());
+          console.warn("S3 backup failed:", s3Resp.status, await s3Resp.text());
         }
       }
     } catch (s3Err) {
-      console.warn("S3 backup error (non-critical):", s3Err);
+      console.warn("S3 backup error:", s3Err);
     }
 
-    // Download image and send to HF
-    const imageResp = await fetch(image_url);
-    const imageBlob = await imageResp.blob();
-
-    const hfUrl =
-      model_type === "fertilizer"
+    // 3. Send to HF
+    const hfUrl = model_type === "fertilizer"
         ? "https://sanchaiKB-fertilizer-model.hf.space/predict"
         : "https://sanchaikb-crop-insect-classifier.hf.space/predict";
 
-    const formData = new FormData();
-    formData.append("file", imageBlob, "image.jpg");
+    const hfFormData = new FormData();
+    hfFormData.append("file", file, file.name);
 
-    const hfResp = await fetch(hfUrl, { method: "POST", body: formData });
+    const hfResp = await fetch(hfUrl, { method: "POST", body: hfFormData });
     
     let prediction = "Unknown";
     if (hfResp.ok) {
       const hfData = await hfResp.json();
       prediction = hfData.prediction || hfData.label || hfData.class || JSON.stringify(hfData);
     } else {
-      console.error("HF API error:", hfResp.status, await hfResp.text());
-      prediction = "Model unavailable - using sample prediction";
+      console.error("HF API error:", hfResp.status);
+      prediction = "Model unavailable";
     }
 
-    // Call Lovable AI (Gemini Flash) for cure
+    // 4. Call Lovable AI for cure
     const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          {
-            role: "system",
-            content: `You are a friendly farming advisor speaking to a regular farmer. Write in very simple, clear language that anyone can understand. Avoid scientific jargon. Use short sentences.
-
-Format your response EXACTLY like this:
-
-🔍 What is it?
-[1-2 simple sentences explaining what the problem is]
-
-⚠️ How bad is it?
-[1 sentence - mild/moderate/severe]
-
-💊 What to do:
-• [Step 1 - simple action]
-• [Step 2 - simple action]
-• [Step 3 - simple action]
-
-🛡️ How to prevent it:
-• [Tip 1]
-• [Tip 2]
-
-Keep the entire response under 150 words. Use everyday words a farmer would understand.`,
-          },
-          {
-            role: "user",
-            content: `The AI detected: "${prediction}" on a crop. Model used: ${model_type}. Give simple treatment advice.`,
-          },
+          { role: "system", content: "You are a friendly farming advisor. Use simple language. Under 150 words." },
+          { role: "user", content: `Detected: "${prediction}" on a crop (${model_type}). Give treatment advice.` },
         ],
       }),
     });
@@ -189,20 +168,12 @@ Keep the entire response under 150 words. Use everyday words a farmer would unde
     if (aiResp.ok) {
       const aiData = await aiResp.json();
       cure = aiData.choices?.[0]?.message?.content || cure;
-    } else {
-      const errText = await aiResp.text();
-      console.error("AI gateway error:", aiResp.status, errText);
-      if (aiResp.status === 429) {
-        cure = "Rate limited. Please try again in a moment.";
-      } else if (aiResp.status === 402) {
-        cure = "AI credits exhausted. Please add funds.";
-      }
     }
 
-    // Store in DB
+    // 5. Store in DB
     const { error: dbError } = await supabase.from("predictions").insert({
       user_id: user.id,
-      image_url,
+      image_url: supabaseImageUrl,
       s3_url: s3Url,
       model_type,
       prediction,
@@ -216,8 +187,7 @@ Keep the entire response under 150 words. Use everyday words a farmer would unde
   } catch (err) {
     console.error("Error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
