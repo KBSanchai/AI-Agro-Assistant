@@ -1,0 +1,11 @@
+services:
+  agro-ai-app:
+    build:
+      context: .
+      args:
+        - VITE_SUPABASE_PROJECT_ID=aqlllqbzggpqzhbhbknv
+        - VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFxbGxscWJ6Z2dwcXpoYmhia252Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMzQwMjQsImV4cCI6MjA5MDcxMDAyNH0.EIfIquP_0wQCZNv0GGoPg6niY9HmkEhIPz4hx5k1iWE
+        - VITE_SUPABASE_URL=https://aqlllqbzggpqzhbhbknv.supabase.co
+    ports:
+      - "80:80"
+    restart: always
