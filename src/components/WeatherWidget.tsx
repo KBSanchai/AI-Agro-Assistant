@@ -10,6 +10,10 @@ interface WeatherData {
   description: string;
 }
 
+interface WeatherWidgetProps {
+  onWeatherData?: (data: { temperature: number; humidity: number }) => void;
+}
+
 const weatherDescriptions: Record<number, string> = {
   0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
   45: "Foggy", 48: "Depositing rime fog",
@@ -20,7 +24,7 @@ const weatherDescriptions: Record<number, string> = {
   95: "Thunderstorm", 96: "Thunderstorm with hail", 99: "Thunderstorm with heavy hail",
 };
 
-export default function WeatherWidget() {
+export default function WeatherWidget({ onWeatherData }: WeatherWidgetProps) {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [location, setLocation] = useState<string>("Loading...");
   const [loading, setLoading] = useState(true);
@@ -33,13 +37,19 @@ export default function WeatherWidget() {
         );
         const data = await resp.json();
         const current = data.current;
-        setWeather({
+        const newWeather = {
           temperature: current.temperature_2m,
           humidity: current.relative_humidity_2m,
           windSpeed: current.wind_speed_10m,
           weatherCode: current.weather_code,
           description: weatherDescriptions[current.weather_code] || "Unknown",
-        });
+        };
+        setWeather(newWeather);
+        
+        // Share data with parent
+        if (onWeatherData) {
+          onWeatherData({ temperature: newWeather.temperature, humidity: newWeather.humidity });
+        }
 
         // Reverse geocode
         try {
