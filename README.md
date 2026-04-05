@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 🌾 Agro AI Assistant
 
 Agro AI Assistant is a modern, AI-powered agricultural dashboard designed to help farmers and agronomists diagnose crop diseases, receive personalized treatment recommendations, and track real-time local weather parameters.
