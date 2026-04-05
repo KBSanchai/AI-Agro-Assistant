@@ -46,6 +46,7 @@ Deno.serve(async (req) => {
     try {
       const accessKeyId = Deno.env.get("AWS_ACCESS_KEY_ID");
       const secretAccessKey = Deno.env.get("AWS_SECRET_ACCESS_KEY");
+      const sessionToken = Deno.env.get("AWS_SESSION_TOKEN");
       const region = Deno.env.get("AWS_REGION") || "us-east-1";
       const bucket = Deno.env.get("AWS_S3_BUCKET") || "cropimagesave";
 
@@ -64,8 +65,14 @@ Deno.serve(async (req) => {
           .map(b => b.toString(16).padStart(2, '0')).join('');
 
         const canonicalUri = "/" + key.split("/").map(encodeURIComponent).join("/");
-        const canonicalHeaders = `content-type:${contentType}\nhost:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
-        const signedHeaders = "content-type;host;x-amz-content-sha256;x-amz-date";
+        
+        let canonicalHeaders = `content-type:${contentType}\nhost:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
+        let signedHeaders = "content-type;host;x-amz-content-sha256;x-amz-date";
+        if (sessionToken) {
+          canonicalHeaders += `x-amz-security-token:${sessionToken}\n`;
+          signedHeaders += ";x-amz-security-token";
+        }
+
         const canonicalRequest = `PUT\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
 
         const credentialScope = `${dateStamp}/${region}/s3/aws4_request`;
@@ -85,9 +92,21 @@ Deno.serve(async (req) => {
 
         const authorization = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${sig}`;
         const s3PutUrl = `https://${host}${canonicalUri}`;
+        
+        const headers: Record<string, string> = { 
+          "Content-Type": contentType, 
+          "Host": host, 
+          "x-amz-content-sha256": payloadHash, 
+          "x-amz-date": amzDate, 
+          "Authorization": authorization 
+        };
+        if (sessionToken) {
+          headers["x-amz-security-token"] = sessionToken;
+        }
+
         const s3Resp = await fetch(s3PutUrl, {
           method: "PUT",
-          headers: { "Content-Type": contentType, "Host": host, "x-amz-content-sha256": payloadHash, "x-amz-date": amzDate, "Authorization": authorization },
+          headers,
           body: imageBytes,
         });
 
@@ -181,13 +200,15 @@ Keep the entire response under 150 words. Use everyday words a farmer would unde
     }
 
     // Store in DB
-    await supabase.from("predictions").insert({
+    const { error: dbError } = await supabase.from("predictions").insert({
       user_id: user.id,
       image_url,
+      s3_url: s3Url,
       model_type,
       prediction,
       cure,
     });
+    if (dbError) console.error("Database insert error:", dbError);
 
     return new Response(JSON.stringify({ prediction, cure, user_email: user.email, s3_url: s3Url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
