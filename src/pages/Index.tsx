@@ -14,9 +14,8 @@ import PredictionHistory from "@/components/PredictionHistory";
 import ChatbotWidget from "@/components/ChatbotWidget";
 import WeatherWidget from "@/components/WeatherWidget";
 import ThemeToggle from "@/components/ThemeToggle";
-import { Plus, MinusCircle } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import GreetingBanner from "@/components/GreetingBanner";
+import QuickStats from "@/components/QuickStats";
 
 const STEPS = [
   { icon: Upload, label: "Upload Image" },
@@ -34,11 +33,6 @@ export default function Index() {
   const [currentStep, setCurrentStep] = useState(0);
   const [result, setResult] = useState<{ prediction: string; cure: string; imageUrl: string; userEmail?: string } | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
-  const [weatherData, setWeatherData] = useState<{ temperature: number; humidity: number } | null>(null);
-  const [plants, setPlants] = useState<any[]>([]);
-  const [selectedPlantId, setSelectedPlantId] = useState<string>("");
-  const [newPlantName, setNewPlantName] = useState("");
-  const [isAddingPlant, setIsAddingPlant] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -52,39 +46,6 @@ export default function Index() {
     });
     return () => subscription.unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (session) {
-      fetchPlants();
-    }
-  }, [session]);
-
-  const fetchPlants = async () => {
-    const { data } = await (supabase as any)
-      .from("plants")
-      .select("*")
-      .order("name");
-    setPlants(data || []);
-  };
-
-  const handleAddPlant = async () => {
-    if (!newPlantName.trim() || !session) return;
-    const { data, error } = await (supabase as any)
-      .from("plants")
-      .insert({ name: newPlantName, user_id: session.user.id })
-      .select()
-      .single();
-
-    if (error) {
-      toast.error("Failed to add plant: " + error.message);
-    } else {
-      setPlants([...plants, data]);
-      setSelectedPlantId(data.id);
-      setNewPlantName("");
-      setIsAddingPlant(false);
-      toast.success("Plant added!");
-    }
-  };
 
   const handleImageSelect = (file: File) => {
     setImageFile(file);
@@ -105,40 +66,25 @@ export default function Index() {
     setPredicting(true);
     setCurrentStep(2);
     try {
-      // Step 1: Upload image to Supabase Storage
-      const fileExt = imageFile.name.split(".").pop() || "jpg";
+      const fileExt = imageFile.name.split(".").pop();
       const filePath = `${session.user.id}/${Date.now()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from("crop-images")
-        .upload(filePath, imageFile, { contentType: imageFile.type, upsert: true });
+        .upload(filePath, imageFile);
+      if (uploadError) throw uploadError;
 
-      if (uploadError) throw new Error("Image upload failed: " + uploadError.message);
-
-      const { data: { publicUrl } } = supabase.storage
+      const { data: urlData } = supabase.storage
         .from("crop-images")
         .getPublicUrl(filePath);
+      const imageUrl = urlData.publicUrl;
 
-      // Step 2: Call Edge Function with image URL and weather/plant data
       const { data, error } = await supabase.functions.invoke("predict", {
-        body: { 
-          image_url: publicUrl, 
-          model_type: modelType,
-          temperature: weatherData?.temperature,
-          humidity: weatherData?.humidity,
-          plant_id: selectedPlantId || null
-        },
+        body: { image_url: imageUrl, model_type: modelType },
       });
-
       if (error) throw error;
-      if (data?.error) throw new Error(data.error);
 
-      setResult({
-        prediction: data.prediction,
-        cure: data.cure,
-        imageUrl: publicUrl,
-        userEmail: data.user_email,
-      });
+      setResult({ prediction: data.prediction, cure: data.cure, imageUrl, userEmail: data.user_email });
       setCurrentStep(3);
       setHistoryKey((k) => k + 1);
       toast.success("Analysis complete!");
@@ -163,15 +109,15 @@ export default function Index() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="gradient-hero text-primary-foreground">
+      <header className="gradient-hero text-primary-foreground shadow-lg">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-primary-foreground/20 flex items-center justify-center animate-pulse">
+            <div className="h-10 w-10 rounded-full bg-primary-foreground/20 flex items-center justify-center">
               <Leaf className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">Agro AI Assistant</h1>
-              <p className="text-xs opacity-80">Smart Crop Disease And Pest Detection</p>
+              <h1 className="text-xl font-bold tracking-tight">Agro AI Assistant</h1>
+              <p className="text-xs opacity-80">Smart Crop Disease & Pest Detection</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -183,7 +129,7 @@ export default function Index() {
               className="text-primary-foreground hover:bg-primary-foreground/10"
             >
               <BarChart3 className="h-4 w-4 mr-2" />
-              Analytics
+              <span className="hidden sm:inline">Analytics</span>
             </Button>
             <Button
               variant="ghost"
@@ -192,13 +138,19 @@ export default function Index() {
               className="text-primary-foreground hover:bg-primary-foreground/10"
             >
               <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
+              <span className="hidden sm:inline">Sign Out</span>
             </Button>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Greeting */}
+        <GreetingBanner session={session} />
+
+        {/* Quick Stats */}
+        <QuickStats />
+
         {/* Step Indicator */}
         <div className="flex items-center justify-center gap-2 mb-8">
           {STEPS.map((step, i) => {
@@ -226,57 +178,13 @@ export default function Index() {
           {/* Left: Upload & Predict */}
           <div className="lg:col-span-2 space-y-6">
             <Card className="transition-shadow hover:shadow-lg">
-              <CardHeader className="bg-primary/5 pb-2">
-                <CardTitle className="text-xl flex items-center gap-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-primary" />
                   Analyze Your Crop
                 </CardTitle>
-                
-                {/* Plant Selection Dropdown */}
-                <div className="mt-4 p-4 bg-background/50 rounded-lg border border-primary/10">
-                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
-                    Tag to Specific Plant Location (Growth Tracking)
-                  </Label>
-                  <div className="flex gap-2">
-                    {!isAddingPlant ? (
-                      <>
-                        <Select value={selectedPlantId} onValueChange={setSelectedPlantId}>
-                          <SelectTrigger className="w-full bg-background border-primary/20">
-                            <SelectValue placeholder="Select a plant (Optional)" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">No Specific Plant Location</SelectItem>
-                            {plants.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button 
-                          variant="outline" 
-                          size="icon" 
-                          onClick={() => setIsAddingPlant(true)}
-                          className="shrink-0"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-2 w-full">
-                        <Input 
-                          placeholder="Plant Name (e.g. Garden Row A)" 
-                          value={newPlantName}
-                          onChange={(e) => setNewPlantName(e.target.value)}
-                          className="bg-background"
-                          onKeyDown={(e) => e.key === 'Enter' && handleAddPlant()}
-                        />
-                        <Button size="sm" onClick={handleAddPlant}>Save</Button>
-                        <Button size="sm" variant="ghost" onClick={() => setIsAddingPlant(false)}>Cancel</Button>
-                      </div>
-                    )}
-                  </div>
-                </div>
               </CardHeader>
-              <CardContent className="space-y-4 pt-6">
+              <CardContent className="space-y-4">
                 <ImageUpload onImageSelect={handleImageSelect} preview={preview} onClear={clearImage} />
 
                 <div className="flex flex-col sm:flex-row gap-4">
@@ -312,7 +220,7 @@ export default function Index() {
                 </div>
 
                 {predicting && (
-                  <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 animate-in fade-in duration-300">
+                  <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 animate-fade-in">
                     <div className="flex items-center gap-3">
                       <Loader2 className="h-5 w-5 animate-spin text-primary" />
                       <div>

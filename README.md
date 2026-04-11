@@ -1,89 +1,196 @@
 # 🌾 Agro AI Assistant
 
-Agro AI Assistant is a modern, AI-powered agricultural dashboard designed to help farmers and agronomists diagnose crop diseases, receive personalized treatment recommendations, and track real-time local weather parameters.
+An AI-powered agricultural dashboard that helps farmers diagnose crop diseases, receive personalized treatment recommendations, and track real-time weather conditions.
 
-This project uses an intelligent web interface to simplify complex agricultural queries, integrating seamlessly with AI models and secure cloud storage.
-
-## 🚀 Features
-- **Crop Disease Prediction:** Upload images of crops directly to the platform. Images are processed securely and analyzed for signs of disease using advanced Hugging Face ML models.
-- **AI Treatment Recommendations:** Integrated with OpenAI, the system provides actionable treatment recommendations for identified crop issues.
-- **Dynamic Weather Widget:** Uses the browser's Geolocation API alongside OpenStreetMap's Nominatim and Open-Meteo APIs to instantly grab and display accurate, live local weather data precisely where you are.
-- **Secure Cloud Backend:** All user data, historic predictions, and image uploads are handled gracefully via Supabase Auth, Postgres, and Edge functions backed by AWS S3.
-
-## 🛠️ Tech Stack
-- **Frontend:** React 18, Vite, TypeScript, Tailwind CSS, shadcn/ui
-- **Backend & Database:** Supabase (Database, Auth, Edge Functions)
-- **Image Storage:** AWS S3 (Interfaced via Supabase Edge Functions / Deno)
-- **External Integration:** Udify Chatbot Widget
+![Tech Stack](https://img.shields.io/badge/React-18-blue) ![Supabase](https://img.shields.io/badge/Supabase-Edge_Functions-green) ![Docker](https://img.shields.io/badge/Docker-Ready-blue) ![AI](https://img.shields.io/badge/AI-Gemini_1.5_Flash-orange)
 
 ---
 
-## 💻 Local Development Setup
+## ✨ Features
 
-### 1. Prerequisites
-You need **Node.js 20+** and **npm** installed on your workstation.
+| Feature | Description |
+|---------|-------------|
+| 🌿 **Crop Disease Detection** | Upload crop images — analyzed by Hugging Face ML models |
+| 🤖 **AI Treatment Advice** | Google Gemini 1.5 Flash generates structured 4-section treatment plans |
+| 🌡️ **Weather Correlation** | Automatically records temperature & humidity with every scan |
+| 📈 **Plant Growth Tracking** | Tag scans to specific plant locations and view health timelines |
+| 📊 **Analytics Dashboard** | Visualize scan history, disease trends, and weather data |
+| 🌦️ **Live Weather Widget** | Real-time local weather using Open-Meteo + geolocation |
+| 🔐 **Secure Auth** | Full user authentication via Supabase Auth |
 
-### 2. Clone and Install
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend:** React 18, Vite, TypeScript, Tailwind CSS, shadcn/ui
+- **Backend:** Supabase (PostgreSQL, Auth, Edge Functions/Deno)
+- **AI:** Google Gemini 1.5 Flash + Hugging Face models
+- **Storage:** Supabase Storage (crop-images bucket)
+- **Serving:** Nginx (production) / Vite dev server (development)
+- **Containerization:** Docker + Docker Compose
+
+---
+
+## 💻 Local Development
+
+### 1. Clone and Install
 ```bash
-git clone https://github.com/KBSanchai/Agro-AI-Assistant.git
-cd Agro-AI-Assistant
+git clone https://github.com/KBSanchai/AI-Agro-Assistant.git
+cd AI-Agro-Assistant
 npm install
 ```
 
-### 3. Environment Variables
-Create a file named `.env` in the root folder of the project. You must fill in these placeholders with your actual keys from Supabase:
-
+### 2. Configure Environment Variables
+```bash
+cp .env.example .env
+```
+Edit `.env` with your Supabase credentials:
 ```env
-# Supabase Configuration
-VITE_SUPABASE_PROJECT_ID="your_project_id"
-VITE_SUPABASE_URL="https://your_project.supabase.co"
-VITE_SUPABASE_PUBLISHABLE_KEY="your_anon_key"
-
-# AWS Configuration (Used heavily in Supabase Edge Functions)
-AWS_ACCESS_KEY_ID="your_aws_access_key"
-AWS_SECRET_ACCESS_KEY="your_aws_secret_key"
-AWS_REGION="us-east-1"
-AWS_S3_BUCKET="cropimagesave"
+VITE_SUPABASE_PROJECT_ID=your_project_id
+VITE_SUPABASE_URL=https://your_project_id.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your_anon_key
 ```
 
-### 4. Run the Development Server
+### 3. Run the Database Migrations
+Run this SQL in your [Supabase SQL Editor](https://supabase.com/dashboard):
+```sql
+-- Enable plant growth tracking
+CREATE TABLE IF NOT EXISTS public.plants (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  crop_type TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+-- Add weather correlation columns
+ALTER TABLE public.predictions
+  ADD COLUMN IF NOT EXISTS temperature FLOAT,
+  ADD COLUMN IF NOT EXISTS humidity INTEGER,
+  ADD COLUMN IF NOT EXISTS plant_id UUID REFERENCES public.plants(id) ON DELETE SET NULL;
+
+-- Enable RLS
+ALTER TABLE public.plants ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own plants" ON public.plants FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can create own plants" ON public.plants FOR INSERT WITH CHECK (auth.uid() = user_id);
+```
+
+### 4. Start Development Server
 ```bash
 npm run dev
 ```
-The application will launch and be locally accessible at `http://localhost:5173`.
+App is available at `http://localhost:5173`
 
 ---
 
-## 🐳 Docker Deployment
-
-For clean infrastructure and production-ready static serving, this project can be containerized. The `Dockerfile` uses a multi-stage build spanning Node.js and Nginx.
-
-### 1. Build the Docker Image
-*Because Vite is a frontend framework, you MUST pass your Supabase variables as build-arguments so they are baked securely into the compiled web client!*
+## 🐳 Docker (Local)
 
 ```bash
-docker build \
-  --build-arg VITE_SUPABASE_PROJECT_ID="your_project_id" \
-  --build-arg VITE_SUPABASE_URL="https://your_project.supabase.co" \
-  --build-arg VITE_SUPABASE_PUBLISHABLE_KEY="your_anon_key" \
-  -t agro-ai-assistant .
-```
+# Build and run with docker compose (reads .env automatically)
+docker compose up -d --build
 
-### 2. Run the Container
-```bash
-docker run -d -p 8080:80 --name agro-ai-app agro-ai-assistant
+# App is live at http://localhost:80
 ```
-The production-optimized static site is now running on Nginx at `http://localhost:8080`.
 
 ---
 
-## 🔮 Supabase Edge Functions
-To deploy the backend functions necessary for AWS S3 handling and the prediction logic, assure you have the Supabase CLI installed, then push your edge functions to the cloud:
+## ☁️ AWS EC2 Deployment (Step-by-Step)
+
+### Phase 1: Launch EC2 Instance
+1. Go to [AWS EC2 Console](https://console.aws.amazon.com/ec2) → **Launch Instance**
+2. Configure:
+   - **AMI:** Ubuntu Server 24.04 LTS
+   - **Instance Type:** `t2.micro` (Free Tier) or `t3.small` (recommended)
+   - **Key Pair:** Create new → download `.pem` file
+   - **Storage:** 20 GB (gp3)
+3. **Security Group — Add Inbound Rules:**
+
+| Type | Port | Source |
+|------|------|--------|
+| SSH | 22 | My IP |
+| HTTP | 80 | 0.0.0.0/0 |
+| HTTPS | 443 | 0.0.0.0/0 |
+
+### Phase 2: Connect to EC2
 ```bash
-supabase functions deploy s3-upload
-supabase functions deploy predict
+ssh -i "your-key.pem" ubuntu@YOUR_EC2_PUBLIC_IP
 ```
-*Don't forget to also push your `AWS_*` variables as secrets through the Supabase Dashboard so the functions can utilize them!*
-=======
-# Agro-AI-Assistant
->>>>>>> 2978a60ccc9f37730d3447de400d9b40da1ef393
+
+### Phase 3: Install Docker on EC2
+```bash
+sudo apt-get update -y
+sudo apt-get install -y docker.io docker-compose-v2
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker ubuntu
+exit  # Log out and reconnect
+```
+
+Reconnect and verify:
+```bash
+ssh -i "your-key.pem" ubuntu@YOUR_EC2_PUBLIC_IP
+docker --version
+```
+
+### Phase 4: Clone & Configure
+```bash
+git clone https://github.com/KBSanchai/AI-Agro-Assistant.git
+cd AI-Agro-Assistant
+cp .env.example .env
+nano .env   # Fill in your Supabase keys, then Ctrl+X → Y → Enter
+```
+
+### Phase 5: Build & Launch 🚀
+```bash
+docker compose up -d --build
+```
+
+Your app is now live at:
+```
+http://YOUR_EC2_PUBLIC_IP
+```
+
+### Phase 6: Update App in the Future
+```bash
+ssh -i "your-key.pem" ubuntu@YOUR_EC2_PUBLIC_IP
+cd AI-Agro-Assistant
+git pull origin main
+docker compose up -d --build
+```
+
+---
+
+## 🔧 Supabase Edge Function
+
+Deploy the AI prediction function (requires Docker):
+```bash
+npx supabase functions deploy predict
+```
+
+Set these secrets in your [Supabase Dashboard](https://supabase.com/dashboard) → Project → Edge Functions → Secrets:
+- `GOOGLE_API_KEY` — Your Google Gemini API key
+
+---
+
+## 🛑 Useful Docker Commands
+
+```bash
+docker compose ps          # View running containers
+docker compose logs -f     # View live logs
+docker compose down        # Stop the app
+docker compose restart     # Restart the app
+```
+
+---
+
+## 🔐 Security
+
+- **Never** commit your `.env` file — it's excluded by `.gitignore`
+- Use `.env.example` as a template for collaborators
+- All Supabase keys are passed as build-time arguments and baked into the compiled JS
+
+---
+
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE) for details.
