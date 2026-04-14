@@ -191,6 +191,31 @@ docker compose restart     # Restart the app
 
 ---
 
+## ⛓️ CI/CD with Jenkins
+
+Automate your builds and deployments with the provided Jenkins configuration.
+
+### 1. Run Jenkins Locally (Docker)
+If you don't have a Jenkins server, you can start one using the provided compose file:
+```bash
+docker compose -f jenkins-compose.yml up -d
+```
+Access Jenkins at `http://localhost:8080`. Follow the on-screen instructions to unlock it.
+
+### 2. Configure the Pipeline
+1. Create a new **Pipeline** job in Jenkins.
+2. Under **Pipeline**, select **Pipeline script from SCM**.
+3. Choose **Git** and enter your repository URL.
+4. Set the script path to `Jenkinsfile`.
+
+### 3. Environment Variables
+Ensure the following variables are set in Jenkins (either as Credentials or Global Env Vars) to allow the build to succeed:
+- `VITE_SUPABASE_PROJECT_ID`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `VITE_SUPABASE_URL`
+
+---
+
 ## 📄 License
 
 MIT License — see [LICENSE](LICENSE) for details.

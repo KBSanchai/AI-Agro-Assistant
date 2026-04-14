@@ -1,0 +1,17 @@
+services:
+  jenkins:
+    build:
+      context: ./jenkins-setup
+      dockerfile: Dockerfile.jenkins
+    container_name: jenkins-service
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock # Allows Jenkins to run Docker commands
+    user: root # Necessary to access docker.sock, though not recommended for production
+    restart: always
+
+volumes:
+  jenkins_home:
