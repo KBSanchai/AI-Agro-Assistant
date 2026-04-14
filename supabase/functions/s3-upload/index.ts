@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     const contentType = file.type || "image/jpeg";
 
     const now = new Date();
-    const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, "").substring(0, 15) + "Z";
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "").substring(0, 15) + "Z";
     const dateStamp = amzDate.substring(0, 8);
     const host = `${bucket}.s3.${region}.amazonaws.com`;
     const payloadHash = await sha256(fileBytes);

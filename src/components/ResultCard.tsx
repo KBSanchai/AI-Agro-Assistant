@@ -77,7 +77,7 @@ export default function ResultCard({ imageUrl, prediction, cure, modelType }: Re
       doc.text("Recommended Treatment:", 20, cureY);
       doc.setFontSize(11);
       doc.setTextColor(50, 50, 50);
-      const cleanCure = cure.replace(/[🔍⚠️💊🛡️]/g, "").trim();
+      const cleanCure = cure.replace(/[🔍⚠️💊🛡️]/gu, "").trim();
       const cureLines = doc.splitTextToSize(cleanCure, 170);
       doc.text(cureLines, 20, cureY + 8);
 
