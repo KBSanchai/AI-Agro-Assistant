@@ -77,7 +77,7 @@ export default function ResultCard({ imageUrl, prediction, cure, modelType }: Re
       doc.text("Recommended Treatment:", 20, cureY);
       doc.setFontSize(11);
       doc.setTextColor(50, 50, 50);
-      const cleanCure = cure.replace(/[🔍⚠️💊🛡️]/gu, "").trim();
+      const cleanCure = cure.replace(/(🔍|⚠️|💊|🛡️)/gu, "").trim();
       const cureLines = doc.splitTextToSize(cleanCure, 170);
       doc.text(cureLines, 20, cureY + 8);
 
@@ -87,8 +87,9 @@ export default function ResultCard({ imageUrl, prediction, cure, modelType }: Re
 
       doc.save(`agro-ai-report-${Date.now()}.pdf`);
       toast.success("PDF downloaded!");
-    } catch {
-      toast.error("Failed to generate PDF");
+    } catch (err) {
+      const error = err as Error;
+      toast.error(error.message);
     }
   };
 

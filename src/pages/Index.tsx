@@ -88,8 +88,9 @@ export default function Index() {
       setCurrentStep(3);
       setHistoryKey((k) => k + 1);
       toast.success("Analysis complete!");
-    } catch (err: any) {
-      toast.error("Prediction failed: " + err.message);
+    } catch (err) {
+      const error = err as Error;
+      toast.error("Prediction failed: " + error.message);
       setCurrentStep(1);
     } finally {
       setPredicting(false);
@@ -189,7 +190,7 @@ export default function Index() {
 
                 <div className="flex flex-col sm:flex-row gap-4">
                   <div className="flex-1">
-                    <Select value={modelType} onValueChange={(v) => setModelType(v as any)}>
+                    <Select value={modelType} onValueChange={(v: "fertilizer" | "insect") => setModelType(v)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
