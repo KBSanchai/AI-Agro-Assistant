@@ -1,5 +1,6 @@
-import { useCallback, useState } from "react";
-import { Upload, X } from "lucide-react";
+import { useCallback, useState, useRef } from "react";
+import { Upload, X, Camera } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface ImageUploadProps {
   onImageSelect: (file: File) => void;
@@ -9,6 +10,7 @@ interface ImageUploadProps {
 
 export default function ImageUpload({ onImageSelect, preview, onClear }: ImageUploadProps) {
   const [dragActive, setDragActive] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -23,6 +25,12 @@ export default function ImageUpload({ onImageSelect, preview, onClear }: ImageUp
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) onImageSelect(file);
+  };
+
+  const handleCameraClick = () => {
+    if (cameraInputRef.current) {
+      cameraInputRef.current.click();
+    }
   };
 
   if (preview) {
@@ -40,18 +48,46 @@ export default function ImageUpload({ onImageSelect, preview, onClear }: ImageUp
   }
 
   return (
-    <label
-      onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
-      onDragLeave={() => setDragActive(false)}
-      onDrop={handleDrop}
-      className={`flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
-        dragActive ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-      }`}
-    >
-      <Upload className="h-10 w-10 text-muted-foreground mb-3" />
-      <p className="text-sm font-medium">Drop your crop image here</p>
-      <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
-      <input type="file" accept="image/*" onChange={handleChange} className="hidden" />
-    </label>
+    <div className="space-y-4">
+      <label
+        onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+        onDragLeave={() => setDragActive(false)}
+        onDrop={handleDrop}
+        className={`flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+          dragActive ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+        }`}
+      >
+        <Upload className="h-10 w-10 text-muted-foreground mb-3" />
+        <p className="text-sm font-medium">Drop your crop image here</p>
+        <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
+        <input type="file" accept="image/*" onChange={handleChange} className="hidden" />
+      </label>
+      
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-background px-2 text-muted-foreground">Or use camera</span>
+        </div>
+      </div>
+
+      <Button
+        variant="outline"
+        className="w-full py-6 border-dashed hover:border-primary hover:bg-primary/5 transition-all"
+        onClick={handleCameraClick}
+      >
+        <Camera className="mr-2 h-5 w-5 text-primary" />
+        Take a Live Photo
+      </Button>
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleChange}
+        className="hidden"
+      />
+    </div>
   );
 }

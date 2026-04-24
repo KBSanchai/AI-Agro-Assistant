@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Leaf, LogOut, Loader2, BarChart3, Upload, Sparkles, CheckCircle } from "lucide-react";
+import { Leaf, LogOut, Loader2, BarChart3, Upload, Sparkles, CheckCircle, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import AuthPage from "@/components/AuthPage";
 import ImageUpload from "@/components/ImageUpload";
@@ -13,6 +13,7 @@ import ResultCard from "@/components/ResultCard";
 import PredictionHistory from "@/components/PredictionHistory";
 import ChatbotWidget from "@/components/ChatbotWidget";
 import WeatherWidget from "@/components/WeatherWidget";
+import MarketPrices from "@/components/MarketPrices";
 import ThemeToggle from "@/components/ThemeToggle";
 import GreetingBanner from "@/components/GreetingBanner";
 import QuickStats from "@/components/QuickStats";
@@ -31,8 +32,10 @@ export default function Index() {
   const [modelType, setModelType] = useState<"fertilizer" | "insect">("fertilizer");
   const [predicting, setPredicting] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
-  const [result, setResult] = useState<{ prediction: string; cure: string; imageUrl: string; userEmail?: string } | null>(null);
+  const [result, setResult] = useState<{ prediction: string; cure: string; imageUrl: string; userEmail?: string; location?: { lat: number; lng: number } } | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
+  const [currentWeather, setCurrentWeather] = useState<{ temp: number; humidity: number } | null>(null);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -65,6 +68,22 @@ export default function Index() {
     if (!imageFile || !session) return;
     setPredicting(true);
     setCurrentStep(2);
+    
+    let lat: number | undefined;
+    let lng: number | undefined;
+
+    try {
+      if (navigator.geolocation) {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+        });
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+      }
+    } catch (e) {
+      console.warn("Location capture failed:", e);
+    }
+
     try {
       const fileExt = imageFile.name.split(".").pop();
       const filePath = `${session.user.id}/${Date.now()}.${fileExt}`;
@@ -79,18 +98,70 @@ export default function Index() {
         .getPublicUrl(filePath);
       const imageUrl = urlData.publicUrl;
 
-      const { data, error } = await supabase.functions.invoke("predict", {
-        body: { image_url: imageUrl, model_type: modelType },
-      });
-      if (error) throw error;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const userId = session.user.id;
 
-      setResult({ prediction: data.prediction, cure: data.cure, imageUrl, userEmail: data.user_email });
+      const response = await fetch(`${supabaseUrl}/functions/v1/predict`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${anonKey}`,
+          "apikey": anonKey
+        },
+        body: JSON.stringify({ 
+          image_url: imageUrl, 
+          model_type: modelType,
+          user_id: userId,
+          temperature: currentWeather?.temp,
+          humidity: currentWeather?.humidity,
+          latitude: lat,
+          longitude: lng
+        })
+      });
+
+      const responseText = await response.text();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${responseText.substring(0, 200)}`);
+      }
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(`Invalid response: ${responseText.substring(0, 100)}`);
+      }
+
+
+      if (data && data.success === false) {
+        throw new Error(`Error: ${data.error} \nLogs: ${data.logs?.join(' -> ')}`);
+      }
+
+      const geminiError = data.logs?.find((l: string) => l.includes("Gemini API error"));
+      const finalCure = (data.cure === "Treatment advice currently unavailable.") 
+        ? `${data.cure}\n\nTechnical Details: ${geminiError || data.logs?.slice(-3).join(' | ')}`
+        : data.cure;
+
+      setResult({ 
+        prediction: data.prediction, 
+        cure: finalCure, 
+        imageUrl, 
+        userEmail: data.user_email,
+        location: lat && lng ? { lat, lng } : undefined
+      });
       setCurrentStep(3);
       setHistoryKey((k) => k + 1);
       toast.success("Analysis complete!");
-    } catch (err) {
-      const error = err as Error;
-      toast.error("Prediction failed: " + error.message);
+    } catch (err: any) {
+      console.error("Prediction error details:", err);
+      let errorMsg = err.message || "Unknown error";
+      
+      // Try to parse more info if available
+      if (err.context && err.context.statusText) {
+        errorMsg = `${err.context.status} ${err.context.statusText}`;
+      }
+      
+      toast.error("Prediction failed: " + errorMsg);
       setCurrentStep(1);
     } finally {
       setPredicting(false);
@@ -118,11 +189,20 @@ export default function Index() {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight">Agro AI Assistant</h1>
-              <p className="text-xs opacity-80">Smart Crop Disease & Pest Detection</p>
+              <p className="text-xs opacity-80">Smart Rice Disease & Pest Detection</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle className="text-primary-foreground hover:bg-primary-foreground/10" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/predictions")}
+              className="text-primary-foreground hover:bg-primary-foreground/10"
+            >
+              <Clock className="h-4 w-4 mr-2" />
+              <span className="hidden sm:inline">History</span>
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -182,7 +262,7 @@ export default function Index() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-primary" />
-                  Analyze Your Crop
+                  Analyze Your Rice Crop
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -243,15 +323,27 @@ export default function Index() {
                 prediction={result.prediction}
                 cure={result.cure}
                 modelType={modelType}
+                location={result.location}
               />
             )}
           </div>
 
           {/* Right: Weather + History */}
           <div className="space-y-6">
-            <WeatherWidget />
+            <WeatherWidget onWeatherUpdate={(temp, humidity) => setCurrentWeather({ temp, humidity })} />
+            <MarketPrices />
             <div>
-              <h2 className="text-lg font-semibold mb-4">Recent Predictions</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Recent Predictions</h2>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-xs text-primary hover:text-primary/80"
+                  onClick={() => navigate("/predictions")}
+                >
+                  View All
+                </Button>
+              </div>
               <PredictionHistory key={historyKey} onDelete={() => setHistoryKey((k) => k + 1)} />
             </div>
           </div>

@@ -14,6 +14,8 @@ interface Prediction {
   prediction: string;
   cure: string;
   created_at: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface PredictionHistoryProps {
@@ -73,6 +75,7 @@ export default function PredictionHistory({ onDelete }: PredictionHistoryProps) 
           prediction={selected.prediction}
           cure={selected.cure}
           modelType={selected.model_type as "fertilizer" | "insect"}
+          location={selected.latitude ? { lat: selected.latitude, lng: selected.longitude! } : undefined}
         />
       </div>
     );

@@ -55,7 +55,11 @@ function formatTime(isoString: string): string {
   }
 }
 
-export default function WeatherWidget() {
+interface WeatherWidgetProps {
+  onWeatherUpdate?: (temp: number, humidity: number) => void;
+}
+
+export default function WeatherWidget({ onWeatherUpdate }: WeatherWidgetProps) {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [location, setLocation] = useState("Detecting...");
   const [loading, setLoading] = useState(true);
@@ -82,6 +86,7 @@ export default function WeatherWidget() {
         sunrise: data.daily?.sunrise?.[0] || "",
         sunset: data.daily?.sunset?.[0] || "",
       });
+      onWeatherUpdate?.(Math.round(c.temperature_2m), c.relative_humidity_2m);
       setLastUpdated(new Date());
     } catch (err) {
       console.error("Weather fetch error:", err);
@@ -104,22 +109,43 @@ export default function WeatherWidget() {
     }
   }, []);
 
-  useEffect(() => {
+  const detectLocation = useCallback(() => {
+    setLoading(true);
+    
     const initLocation = (lat: number, lon: number) => {
       setCoords({ lat, lon });
       fetchWeather(lat, lon);
       fetchLocation(lat, lon);
     };
 
+    const fallbackToIP = async () => {
+      try {
+        const resp = await fetch("https://ipapi.co/json/");
+        const data = await resp.json();
+        if (data.latitude && data.longitude) {
+          initLocation(data.latitude, data.longitude);
+        } else {
+          initLocation(20.5937, 78.9629); // Default India
+        }
+      } catch {
+        initLocation(20.5937, 78.9629);
+      }
+    };
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => initLocation(pos.coords.latitude, pos.coords.longitude),
-        () => initLocation(20.5937, 78.9629)
+        () => fallbackToIP(),
+        { timeout: 5000, enableHighAccuracy: true }
       );
     } else {
-      initLocation(20.5937, 78.9629);
+      fallbackToIP();
     }
   }, [fetchWeather, fetchLocation]);
+
+  useEffect(() => {
+    detectLocation();
+  }, [detectLocation]);
 
   // Auto-refresh every 5 minutes
   useEffect(() => {
@@ -153,9 +179,18 @@ export default function WeatherWidget() {
       {/* Main weather display */}
       <div className={`bg-gradient-to-br ${gradient} p-5`}>
         <div className="flex items-start justify-between mb-3">
-          <div>
+          <div className="flex-1">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Current Weather</p>
-            <p className="text-sm font-semibold text-foreground mt-0.5">{location}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-foreground mt-0.5">{location}</p>
+              <button 
+                onClick={detectLocation}
+                className="p-1 rounded-full hover:bg-primary/10 transition-colors text-primary"
+                title="Refresh location"
+              >
+                <RefreshCw className="h-3 w-3" />
+              </button>
+            </div>
           </div>
           <WeatherIcon className="h-10 w-10 text-primary opacity-80" />
         </div>

@@ -14,35 +14,94 @@ export type Database = {
   }
   public: {
     Tables: {
-      predictions: {
+      plants: {
         Row: {
-          created_at: string
-          cure: string
           id: string
-          image_url: string
-          model_type: string
-          prediction: string
           user_id: string
+          name: string
+          crop_type: string | null
+          created_at: string
         }
         Insert: {
-          created_at?: string
-          cure: string
           id?: string
+          user_id: string
+          name: string
+          crop_type?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          crop_type?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      predictions: {
+        Row: {
+          id: string
+          user_id: string
           image_url: string
           model_type: string
           prediction: string
+          cure: string
+          created_at: string
+          s3_url: string | null
+          temperature: number | null
+          humidity: number | null
+          plant_id: string | null
+        }
+        Insert: {
+          id?: string
           user_id: string
+          image_url: string
+          model_type: string
+          prediction: string
+          cure: string
+          created_at?: string
+          s3_url?: string | null
+          temperature?: number | null
+          humidity?: number | null
+          plant_id?: string | null
         }
         Update: {
-          created_at?: string
-          cure?: string
           id?: string
+          user_id?: string
           image_url?: string
           model_type?: string
           prediction?: string
-          user_id?: string
+          cure?: string
+          created_at?: string
+          s3_url?: string | null
+          temperature?: number | null
+          humidity?: number | null
+          plant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "predictions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "predictions_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: {

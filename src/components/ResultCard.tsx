@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Bug, Leaf, Download, CheckCircle2, AlertTriangle, Shield } from "lucide-react";
+import { Bug, Leaf, Download, CheckCircle2, AlertTriangle, Shield, MapPin, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 
@@ -11,6 +11,7 @@ interface ResultCardProps {
   prediction: string;
   cure: string;
   modelType: "fertilizer" | "insect";
+  location?: { lat: number; lng: number };
 }
 
 function parseCure(cure: string) {
@@ -29,7 +30,7 @@ function parseCure(cure: string) {
   return sections;
 }
 
-export default function ResultCard({ imageUrl, prediction, cure, modelType }: ResultCardProps) {
+export default function ResultCard({ imageUrl, prediction, cure, modelType, location }: ResultCardProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "treatment">("overview");
 
   const sections = parseCure(cure);
@@ -150,6 +151,29 @@ export default function ResultCard({ imageUrl, prediction, cure, modelType }: Re
                 </div>
               </div>
             ))}
+
+            {location && (
+              <div className="flex gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10 animate-in fade-in duration-300">
+                <MapPin className="h-5 w-5 text-primary" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold mb-0.5">Field Location Marked</p>
+                    <a 
+                      href={`https://www.google.com/maps?q=${location.lat},${location.lng}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-primary flex items-center gap-1 hover:underline font-bold"
+                    >
+                      View on Map
+                      <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {!hasSections && (
               <div className="p-3 rounded-lg bg-muted/50">
