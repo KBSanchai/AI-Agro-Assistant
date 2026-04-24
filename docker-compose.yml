@@ -1,13 +1,10 @@
 services:
-  agro-ai-app:
+  web:
     build:
       context: .
-      args:
-        - VITE_SUPABASE_PROJECT_ID=${VITE_SUPABASE_PROJECT_ID}
-        - VITE_SUPABASE_PUBLISHABLE_KEY=${VITE_SUPABASE_PUBLISHABLE_KEY}
-        - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+      dockerfile: Dockerfile
     ports:
       - "80:80"
-    restart: always
     env_file:
       - .env
+    restart: always
